@@ -5,7 +5,6 @@ set dotenv-load
 set quiet
 
 server_port := env("SERVER_PORT", "4000")
-client_port := env("CLIENT_PORT", "5173")
 project_root := justfile_directory()
 
 # List available recipes
@@ -14,7 +13,7 @@ default:
 
 # ─── System ──────────────────────────────────────────────
 
-# Start server + client (foreground, Ctrl+C to stop)
+# Start server + TUI
 start:
     ./scripts/start-system.sh
 
@@ -43,28 +42,20 @@ server-prod:
 server-typecheck:
     cd {{project_root}}/apps/server && bun run typecheck
 
-# ─── Client (Vue + Vite, port 5173) ─────────────────────
+# ─── TUI ─────────────────────────────────────────────────
 
-# Install client dependencies
-client-install:
-    cd {{project_root}}/apps/client && bun install
+# Build Matrix TUI (release)
+tui-build:
+    cargo build --release --manifest-path {{project_root}}/apps/tui-rs/Cargo.toml
 
-# Start client dev server
-client:
-    cd {{project_root}}/apps/client && VITE_PORT={{client_port}} bun run dev
-
-# Build client for production
-client-build:
-    cd {{project_root}}/apps/client && bun run build
-
-# Preview production build
-client-preview:
-    cd {{project_root}}/apps/client && bun run preview
+# Launch Matrix TUI
+tui:
+    cargo run --release --manifest-path {{project_root}}/apps/tui-rs/Cargo.toml
 
 # ─── Install ─────────────────────────────────────────────
 
-# Install all dependencies (server + client)
-install: server-install client-install
+# Install all dependencies (server + TUI build)
+install: server-install tui-build
 
 # ─── Database ────────────────────────────────────────────
 
@@ -93,9 +84,6 @@ health:
     @curl -sf http://localhost:{{server_port}}/health > /dev/null 2>&1 \
       && echo "Server: UP (port {{server_port}})" \
       || echo "Server: DOWN (port {{server_port}})"
-    @curl -sf http://localhost:{{client_port}} > /dev/null 2>&1 \
-      && echo "Client: UP (port {{client_port}})" \
-      || echo "Client: DOWN (port {{client_port}})"
 
 # ─── Hooks ───────────────────────────────────────────────
 
@@ -106,9 +94,3 @@ hook-test name:
 # List all hook scripts
 hooks:
     @ls -1 {{project_root}}/.claude/hooks/*.py | xargs -I{} basename {} .py
-
-# ─── Open ────────────────────────────────────────────────
-
-# Open the client dashboard in browser
-open:
-    open http://localhost:{{client_port}}

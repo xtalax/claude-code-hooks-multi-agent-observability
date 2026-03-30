@@ -11,138 +11,330 @@ This system provides complete observability into Claude Code agent behavior by c
 ## 🏗️ Architecture
 
 ```
-Claude Agents → Hook Scripts → HTTP POST → Bun Server → SQLite → WebSocket → Vue Client
+Claude Agents → Hook Scripts → HTTP POST → Bun Server → SQLite → WebSocket → Matrix TUI (Rust)
 ```
 
 ![Agent Data Flow Animation](images/AgentDataFlowV2.gif)
 
-## 📋 Setup Requirements
+## 📋 Prerequisites
 
-Before getting started, ensure you have the following installed:
+| Tool | Required for | Install |
+|------|-------------|---------|
+| [Claude Code](https://docs.anthropic.com/en/docs/claude-code) | Everything | `npm install -g @anthropic-ai/claude-code` |
+| [Astral uv](https://docs.astral.sh/uv/) | Hooks & status line | `curl -LsSf https://astral.sh/uv/install.sh \| sh` |
+| [Bun](https://bun.sh/) | Event server | `curl -fsSL https://bun.sh/install \| bash` |
+| [Rust](https://rustup.rs/) | Matrix TUI | `curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs \| sh` |
+| [just](https://github.com/casey/just) | Recipe runner (optional) | `cargo install just` |
 
-- **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's official CLI for Claude
-- **[Astral uv](https://docs.astral.sh/uv/)** - Fast Python package manager (required for hook scripts)
-- **[Bun](https://bun.sh/)**, **npm**, or **yarn** - For running the server and client
-- **[just](https://github.com/casey/just)** (optional) - Command runner for project recipes
-- **Anthropic API Key** - Set as `ANTHROPIC_API_KEY` environment variable
-- **OpenAI API Key** (optional) - For multi-model support with just-prompt MCP tool
-- **ElevenLabs API Key** (optional) - For audio features
-- **Firecrawl API Key** (optional) - For web scraping features
-
-### Configure .claude Directory
-
-To setup observability in your repo,we need to copy the .claude directory to your project root.
-
-To integrate the observability hooks into your projects:
-
-1. **Copy the entire `.claude` directory to your project root:**
-   ```bash
-   cp -R .claude /path/to/your/project/
-   ```
-
-2. **Update the `settings.json` configuration:**
-   
-   Open `.claude/settings.json` in your project and modify the `source-app` parameter to identify your project:
-   
-   ```json
-   {
-     "hooks": {
-       "PreToolUse": [{
-         "matcher": "",
-         "hooks": [
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/pre_tool_use.py"
-           },
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type PreToolUse --summarize"
-           }
-         ]
-       }],
-       "PostToolUse": [{
-         "matcher": "",
-         "hooks": [
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/post_tool_use.py"
-           },
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type PostToolUse --summarize"
-           }
-         ]
-       }],
-       "UserPromptSubmit": [{
-         "hooks": [
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/user_prompt_submit.py --log-only"
-           },
-           {
-             "type": "command",
-             "command": "uv run .claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type UserPromptSubmit --summarize"
-           }
-         ]
-       }]
-       // ... (similar patterns for all 12 hook events: Notification, Stop, SubagentStop,
-      //      SubagentStart, PreCompact, SessionStart, SessionEnd, PermissionRequest, PostToolUseFailure)
-     }
-   }
-   ```
-   
-   Replace `YOUR_PROJECT_NAME` with a unique identifier for your project (e.g., `my-api-server`, `react-app`, etc.).
-
-3. **Ensure the observability server is running:**
-   ```bash
-   # From the observability project directory (this codebase)
-   ./scripts/start-system.sh
-   ```
-
-Now your project will send events to the observability system whenever Claude Code performs actions.
-
-## 🚀 Quick Start
-
-You can quickly view how this works by running this repository's `.claude` setup.
+## 🚀 Full Stack Install (Server + TUI + Hooks)
 
 ```bash
-# 1. Start both server and client
-just start          # or: ./scripts/start-system.sh
+# 1. Clone the repo
+git clone https://github.com/xtalax/claude-code-hooks-multi-agent-observability.git matrix-observability
+cd matrix-observability
 
-# 2. Open http://localhost:5173 in your browser
+# 2. Set up environment variables
+cp .env.sample .env
+# Edit .env — at minimum set ANTHROPIC_API_KEY
+#   ANTHROPIC_API_KEY=sk-ant-...   (required — powers hook summaries + TUI agent naming)
+#   ENGINEER_NAME=YourName          (optional — personalizes TTS announcements)
+#   ELEVENLABS_API_KEY=...          (optional — high-quality TTS)
+#   OPENAI_API_KEY=...              (optional — fallback TTS)
 
-# 3. Open Claude Code and run the following command:
-Run git ls-files to understand the codebase.
+# 3. Install dependencies
+just install          # or: cd apps/server && bun install && cd ../tui-rs && cargo build --release
 
-# 4. Watch events stream in the client
+# 4. Start the event server (port 4000)
+just start            # or: ./scripts/start-system.sh
 
-# 5. Copy the .claude folder to other projects you want to emit events from.
-cp -R .claude <directory of your codebase you want to emit events from>
+# 5. Launch the Matrix TUI
+just tui              # or: cargo run --release --manifest-path apps/tui-rs/Cargo.toml
+
+# 6. Open Claude Code in any project with the hooks installed and start working — events stream in real-time
 ```
 
-### Using `just` (Recommended)
+## 🔌 Install the Status Line Only
 
-A `justfile` provides convenient recipes for common operations:
+The status line shows context window usage, git branch, and model info directly in Claude Code's footer. It works standalone — no server needed.
+
+### Step 1: Copy the status line script
+
+```bash
+# From the matrix-observability repo root:
+mkdir -p /path/to/your/project/.claude/status_lines
+cp .claude/status_lines/status_line_v6.py /path/to/your/project/.claude/status_lines/
+```
+
+### Step 2: Add to your project's `.claude/settings.json`
+
+If you don't have a `settings.json` yet, create one at `.claude/settings.json`:
+
+```json
+{
+  "statusLine": {
+    "type": "command",
+    "command": "uv run $CLAUDE_PROJECT_DIR/.claude/status_lines/status_line_v6.py",
+    "padding": 0
+  }
+}
+```
+
+### Step 3: Verify
+
+Restart Claude Code in your project. The status line appears at the bottom:
+
+```
+ ᛝ Claude Opus 4.6 ─  main +3 -1 ± ─ ████████░░ 42% of 1.0M ─ ~580k left ─ a1b2c3d4
+```
+
+**Theme support**: If you use [omarchy](https://github.com/ArcadeLabsInc/omarchy), colors are loaded from `~/.config/omarchy/current/theme/colors.toml`. Otherwise a built-in Gruvbox palette is used — no config needed.
+
+**Dependencies**: Only `python-dotenv` (resolved automatically by `uv run`).
+
+## 🪝 Install the Hooks Only (Local Logging)
+
+The hooks run standalone and log events to a local `logs/` directory. No server required — useful for auditing tool usage, blocking dangerous commands, and tracking session history.
+
+### Step 1: Copy the hooks and utilities
+
+```bash
+# From the matrix-observability repo root:
+cp -R .claude/hooks /path/to/your/project/.claude/hooks
+```
+
+### Step 2: Add hook configuration to `.claude/settings.json`
+
+Merge this into your project's `.claude/settings.json` (create it if it doesn't exist):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/pre_tool_use.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/post_tool_use.py"
+          }
+        ]
+      }
+    ],
+    "Notification": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/notification.py"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/stop.py --chat"
+          }
+        ]
+      }
+    ],
+    "SubagentStop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/subagent_stop.py"
+          }
+        ]
+      }
+    ],
+    "SubagentStart": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/subagent_start.py"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/pre_compact.py"
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/user_prompt_submit.py --log-only --store-last-prompt --name-agent"
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/session_start.py"
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/session_end.py"
+          }
+        ]
+      }
+    ],
+    "PermissionRequest": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/permission_request.py"
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/post_tool_use_failure.py"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+All 12 Claude Code hook events are covered. Each hook logs to `logs/{session_id}/` in your project directory.
+
+### Step 3: Verify
+
+```bash
+# Restart Claude Code, run any command, then check for logs:
+ls logs/
+```
+
+**What the hooks do**:
+
+| Hook | Purpose |
+|------|---------|
+| `pre_tool_use.py` | Blocks dangerous `rm -rf` commands, prevents `.env` access, logs tool inputs |
+| `post_tool_use.py` | Logs tool results with MCP tool detection |
+| `post_tool_use_failure.py` | Captures tool execution failures |
+| `notification.py` | Tracks notifications with optional TTS (ElevenLabs > OpenAI > pyttsx3) |
+| `stop.py` | Records session completion with `--chat` to include transcripts |
+| `subagent_start.py` | Tracks subagent spawns (agent_type, agent_id) |
+| `subagent_stop.py` | Logs subagent completion with optional TTS |
+| `pre_compact.py` | Tracks context compaction, creates transcript backups |
+| `user_prompt_submit.py` | Logs user prompts, stores session data, names agents |
+| `session_start.py` | Records session start (model, agent_type, source) |
+| `session_end.py` | Records session end with reason (clear/logout/exit) |
+| `permission_request.py` | Logs permission request events |
+
+**Dependencies**: Python packages are declared inline via `uv` script headers — no `pip install` needed. `uv run` resolves them automatically on first use.
+
+## 🔌 Add Server Observability to Any Project
+
+To stream events from another project to the observability server and TUI, add `send_event.py` alongside the local hooks.
+
+### Step 1: Copy the event sender
+
+```bash
+cp .claude/hooks/send_event.py /path/to/your/project/.claude/hooks/
+cp -R .claude/hooks/utils /path/to/your/project/.claude/hooks/utils
+```
+
+### Step 2: Add `send_event.py` to each hook in `settings.json`
+
+For each hook event, add a second command that sends the event to the server. Replace `YOUR_PROJECT_NAME` with a unique identifier (e.g., `my-api`, `frontend`):
+
+```json
+{
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/pre_tool_use.py"
+          },
+          {
+            "type": "command",
+            "command": "uv run $CLAUDE_PROJECT_DIR/.claude/hooks/send_event.py --source-app YOUR_PROJECT_NAME --event-type PreToolUse --summarize"
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+Apply the same pattern for all 12 event types. The `--summarize` flag uses Claude Haiku to generate one-line event summaries. The `--add-chat` flag (used on `Stop`) includes conversation transcripts.
+
+### Step 3: Ensure the server is running
+
+```bash
+# From the matrix-observability directory
+just start            # or: ./scripts/start-system.sh
+```
+
+The server listens on port 4000 by default (configurable via `SERVER_PORT` env var). Events from all projects stream into the same TUI.
+
+## ⚡ Quick Reference: `just` Recipes
 
 ```bash
 just              # List all available recipes
-just start        # Start server + client
+just start        # Start event server
 just stop         # Stop all processes
 just restart      # Stop then start
 just server       # Start server only (dev mode)
-just client       # Start client only
+just tui          # Launch Matrix TUI
+just tui-build    # Build TUI (release)
 just install      # Install all dependencies
-just health       # Check server/client status
+just health       # Check server health
 just test-event   # Send a test event
 just db-reset     # Reset the database
 just hooks        # List all hook scripts
-just open         # Open dashboard in browser
 ```
 
 ## 📁 Project Structure
 
 ```
-claude-code-hooks-multi-agent-observability/
+matrix-observability/
 │
 ├── apps/                    # Application components
 │   ├── server/             # Bun TypeScript server
@@ -153,26 +345,18 @@ claude-code-hooks-multi-agent-observability/
 │   │   ├── package.json
 │   │   └── events.db       # SQLite database (gitignored)
 │   │
-│   └── client/             # Vue 3 TypeScript client
+│   └── tui-rs/             # Rust Matrix TUI (terminal dashboard)
 │       ├── src/
-│       │   ├── App.vue     # Main app with theme & WebSocket management
-│       │   ├── components/
-│       │   │   ├── EventTimeline.vue      # Event list with auto-scroll
-│       │   │   ├── EventRow.vue           # Individual event display
-│       │   │   ├── FilterPanel.vue        # Multi-select filters
-│       │   │   ├── ChatTranscriptModal.vue # Chat history viewer
-│       │   │   ├── StickScrollButton.vue  # Scroll control
-│       │   │   └── LivePulseChart.vue     # Real-time activity chart
-│       │   ├── composables/
-│       │   │   ├── useWebSocket.ts        # WebSocket connection logic
-│       │   │   ├── useEventColors.ts      # Color assignment system
-│       │   │   ├── useChartData.ts        # Chart data aggregation
-│       │   │   └── useEventEmojis.ts      # Event type emoji mapping
-│       │   ├── utils/
-│       │   │   └── chartRenderer.ts       # Canvas chart rendering
-│       │   └── types.ts    # TypeScript interfaces
-│       ├── .env.sample     # Environment configuration template
-│       └── package.json
+│       │   ├── main.rs     # Entry point, terminal setup, main loop
+│       │   ├── app.rs      # App state, event ingestion, haiku naming
+│       │   ├── config.rs   # Theme loader (omarchy + fallback), palettes
+│       │   ├── event.rs    # HookEvent struct
+│       │   ├── ai/         # Haiku API worker (agent naming & status)
+│       │   ├── net/        # WebSocket client, health check, server mgmt
+│       │   ├── rain/       # Digital rain animation (columns, panels)
+│       │   ├── widgets/    # Ratatui widgets (event stream, stats, rain)
+│       │   └── highlight/  # Syntax highlighting (bash, JSON, paths)
+│       └── Cargo.toml
 │
 ├── .claude/                # Claude Code integration
 │   ├── hooks/             # Hook scripts (Python with uv)
@@ -208,9 +392,8 @@ claude-code-hooks-multi-agent-observability/
 ├── justfile               # Task runner recipes (just start, just stop, etc.)
 │
 ├── scripts/               # Utility scripts
-│   ├── start-system.sh   # Launch server & client
-│   ├── reset-system.sh   # Stop all processes
-│   └── test-system.sh    # System validation
+│   ├── start-system.sh   # Launch event server
+│   └── reset-system.sh   # Stop all processes
 │
 └── logs/                 # Application logs (gitignored)
 ```
@@ -259,37 +442,38 @@ Bun-powered TypeScript server with real-time capabilities:
   - WebSocket broadcast to all clients
   - Chat transcript storage
 
-### 3. Client (`apps/client/`)
+### 3. Matrix TUI (`apps/tui-rs/`)
 
-Vue 3 application with real-time visualization:
+Rust terminal dashboard with digital rain visualization, built on Ratatui and Crossterm.
 
-- **Visual Design**:
-  - Dual-color system: App colors (left border) + Session colors (second border)
-  - Gradient indicators for visual distinction
-  - Dark/light theme support
-  - Responsive layout with smooth animations
+- **Digital Rain**: Per-agent rain columns with tool-aware color palettes (Bash=cyan, Read/Write=yellow, Grep=magenta, Task=orange)
+- **Agent Naming**: Haiku API generates short memorable names for each agent based on their current task, refreshed on every new user prompt and every 60 seconds
+- **Live Event Stream**: Scrollable event log with syntax-highlighted tool output (bash commands, JSON, file paths)
+- **Stats Bar**: Real-time event rate, agent count, connection status
+- **WebSocket Client**: Connects to the event server on port 4000
 
-- **Features**:
-  - Real-time WebSocket updates
-  - Multi-criteria filtering (app, session, event type)
-  - Live pulse chart with session-colored bars and event type indicators
-  - Time range selection (1m, 3m, 5m) with appropriate data aggregation
-  - Chat transcript viewer with syntax highlighting
-  - Auto-scroll with manual override
-  - Event limiting (configurable via `VITE_MAX_EVENTS_TO_DISPLAY`)
+```bash
+# Build and run
+just tui
 
-- **Tool Emoji System**:
-  - Each tool type has a dedicated emoji (Bash: 💻, Read: 📖, Write: ✍️, Edit: ✏️, Task: 🤖, etc.)
-  - Tool events show combo emojis: event emoji + tool emoji (e.g., 🔧💻 for PreToolUse:Bash)
-  - MCP tools display with 🔌 prefix
-  - Tool name badge displayed alongside event type in the timeline
+# Or directly with cargo
+cargo run --release --manifest-path apps/tui-rs/Cargo.toml
+```
 
-- **Live Pulse Chart**:
-  - Canvas-based real-time visualization
-  - Session-specific colors for each bar
-  - Event type + tool combo emojis displayed on bars
-  - Smooth animations and glow effects
-  - Responsive to filter changes
+Requires `ANTHROPIC_API_KEY` in `.env` for agent naming (runs without it, names are just omitted).
+
+### Omarchy Compatibility
+
+The Matrix TUI and status line integrate with [omarchy](https://github.com/ArcadeLabsInc/omarchy) for automatic theme matching. When omarchy is installed, colors are loaded from `~/.config/omarchy/current/theme/colors.toml` so the TUI matches your terminal and desktop theme.
+
+**Without omarchy**: A built-in Kanagawa palette is used as the fallback. The full 16-color ANSI palette plus accent, cursor, and selection colors are provided, so the TUI looks good out of the box on any terminal. No configuration needed.
+
+**How it works**: The theme loader starts from the fallback palette and overlays any colors found in the omarchy TOML. This means partial omarchy configs (e.g. only `background` and `accent` defined) work correctly — missing keys fall through to the Kanagawa defaults.
+
+| Component | Fallback Theme | Config Path |
+|-----------|---------------|-------------|
+| Matrix TUI (Rust) | Kanagawa | `~/.config/omarchy/current/theme/colors.toml` |
+| Status Line (Python) | Gruvbox | `~/.config/omarchy/current/theme/colors.toml` |
 
 ## 🔄 Data Flow
 
@@ -301,7 +485,7 @@ Vue 3 application with real-time visualization:
    - Validates event structure
    - Stores in SQLite with timestamp
    - Broadcasts to WebSocket clients
-6. **Client Update**: Vue app receives event and updates timeline in real-time
+6. **TUI Update**: Matrix TUI receives event via WebSocket and updates rain display in real-time
 
 ## 🎨 Event Types & Visualization
 
@@ -369,13 +553,10 @@ Already integrated! Hooks run both validation and observability:
 ## 🧪 Testing
 
 ```bash
-# System validation
-./scripts/test-system.sh
-
 # Quick test event via just
 just test-event
 
-# Check server/client health
+# Check server health
 just health
 
 # Manual event test
@@ -405,13 +586,9 @@ Copy `.env.sample` to `.env` in the project root and fill in your API keys:
 - `ELEVENLABS_API_KEY` – ElevenLabs API key (optional, for TTS)
 - `FIRECRAWL_API_KEY` – Firecrawl API key (optional, for web scraping)
 
-**Client** (`.env` file in `apps/client/.env`):
-- `VITE_MAX_EVENTS_TO_DISPLAY=100` – Maximum events to show (removes oldest when exceeded)
+### Server Port
 
-### Server Ports
-
-- Server: `4000` (HTTP/WebSocket)
-- Client: `5173` (Vite dev server)
+- Server: `4000` (HTTP/WebSocket) — the TUI connects here automatically
 
 ## 🤖 Agent Teams
 
@@ -477,7 +654,7 @@ This is what separates engineers from vibe coders: understanding what's happenin
 ## 📊 Technical Stack
 
 - **Server**: Bun, TypeScript, SQLite
-- **Client**: Vue 3, TypeScript, Vite, Tailwind CSS
+- **TUI**: Rust, Ratatui, Crossterm, Tokio, Tungstenite
 - **Hooks**: Python 3.11+, Astral uv, TTS (ElevenLabs or OpenAI), LLMs (Claude or OpenAI)
 - **Communication**: HTTP REST, WebSocket
 

@@ -194,6 +194,28 @@ export function getRecentEvents(limit: number = 300): HookEvent[] {
   })).reverse();
 }
 
+export function getRecentEventsLite(limit: number = 300): HookEvent[] {
+  const stmt = db.prepare(`
+    SELECT id, source_app, session_id, hook_event_type, payload, summary, timestamp, model_name
+    FROM events
+    ORDER BY timestamp DESC
+    LIMIT ?
+  `);
+
+  const rows = stmt.all(limit) as any[];
+
+  return rows.map(row => ({
+    id: row.id,
+    source_app: row.source_app,
+    session_id: row.session_id,
+    hook_event_type: row.hook_event_type,
+    payload: JSON.parse(row.payload),
+    summary: row.summary || undefined,
+    timestamp: row.timestamp,
+    model_name: row.model_name || undefined
+  })).reverse();
+}
+
 // Theme database functions
 export function insertTheme(theme: Theme): Theme {
   const stmt = db.prepare(`
@@ -292,9 +314,9 @@ export function getThemes(query: ThemeSearchQuery = {}): Theme[] {
     params.push(searchTerm, searchTerm, searchTerm);
   }
   
-  // Add sorting
+  // Add sorting (validated against allowlists to prevent SQL injection)
   const sortBy = query.sortBy || 'created';
-  const sortOrder = query.sortOrder || 'desc';
+  const sortOrder = query.sortOrder?.toUpperCase() === 'ASC' ? 'ASC' : 'DESC';
   const sortColumn = {
     name: 'name',
     created: 'createdAt',
@@ -302,8 +324,8 @@ export function getThemes(query: ThemeSearchQuery = {}): Theme[] {
     downloads: 'downloadCount',
     rating: 'rating'
   }[sortBy] || 'createdAt';
-  
-  sql += ` ORDER BY ${sortColumn} ${sortOrder.toUpperCase()}`;
+
+  sql += ` ORDER BY ${sortColumn} ${sortOrder}`;
   
   // Add pagination
   if (query.limit) {
