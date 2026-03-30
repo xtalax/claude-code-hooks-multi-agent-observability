@@ -17,6 +17,7 @@ use crate::rain::{ColoredChars, RainPanel};
 const REBALANCE_INTERVAL: Duration = Duration::from_secs(2);
 const REAP_INTERVAL: Duration = Duration::from_secs(5);
 const HAIKU_INTERVAL: Duration = Duration::from_secs(8);
+const NAME_REFRESH_INTERVAL: Duration = Duration::from_secs(60);
 
 // Agent lifecycle
 const AGENT_STALE_TIMEOUT: Duration = Duration::from_secs(60);
@@ -70,6 +71,7 @@ pub struct App {
     last_rebalance: Instant,
     last_reap: Instant,
     last_haiku: Instant,
+    last_name_refresh: Instant,
 
     // Terminal dimensions (updated by resize events)
     pub rain_height: usize,
@@ -119,6 +121,7 @@ impl App {
             last_rebalance: now,
             last_reap: now,
             last_haiku: now,
+            last_name_refresh: now,
 
             rain_height: DEFAULT_RAIN_HEIGHT,
             rain_width: 80,
@@ -156,6 +159,13 @@ impl App {
         if now.duration_since(self.last_haiku) >= HAIKU_INTERVAL {
             self.trigger_haiku_refresh();
             self.last_haiku = now;
+        }
+
+        // 7. Re-generate all agent names every 60s
+        if now.duration_since(self.last_name_refresh) >= NAME_REFRESH_INTERVAL {
+            self.forget_all_names();
+            self.trigger_haiku_refresh();
+            self.last_name_refresh = now;
         }
     }
 
@@ -260,6 +270,11 @@ impl App {
                     self.agent_status_expires.remove(&agent_id);
                 }
             }
+        }
+
+        // Re-name agent on every new user prompt
+        if event.hook_event_type == "UserPromptSubmit" {
+            self.forget_agent_name(&agent_id);
         }
 
         // Mark agent for removal on terminal events
@@ -450,6 +465,26 @@ impl App {
         }
     }
 
+    // ── Agent naming ──
+
+    fn forget_agent_name(&mut self, agent_id: &str) {
+        self.rain.agent_names.remove(agent_id);
+        let _ = self.haiku_tx.send(HaikuRequest {
+            agent_id: agent_id.to_string(),
+            needs_name: false,
+            name_context: String::new(),
+            status_context: String::new(),
+            forget: true,
+        });
+    }
+
+    fn forget_all_names(&mut self) {
+        let ids: Vec<String> = self.rain.agent_names.keys().cloned().collect();
+        for id in ids {
+            self.forget_agent_name(&id);
+        }
+    }
+
     // ── Haiku refresh ──
 
     pub fn trigger_haiku_refresh(&mut self) {
@@ -491,12 +526,13 @@ impl App {
                 continue;
             }
 
-            // Build name context from first user prompt
+            // Build name context from most recent user prompt
             let name_context = if needs_name {
                 agent_events
                     .iter()
+                    .rev()
                     .find(|e| e.hook_event_type == "UserPromptSubmit" && !e.summary.is_empty())
-                    .or_else(|| agent_events.iter().find(|e| !e.summary.is_empty()))
+                    .or_else(|| agent_events.iter().rev().find(|e| !e.summary.is_empty()))
                     .map(|e| {
                         let s = &e.summary;
                         if s.len() > 200 {
