@@ -11,8 +11,7 @@ This system provides complete observability into Claude Code agent behavior by c
 ## 🏗️ Architecture
 
 ```
-Claude Agents → Hook Scripts → HTTP POST → Bun Server → SQLite → WebSocket → Vue Client
-                                                                           → Matrix TUI (Rust)
+Claude Agents → Hook Scripts → HTTP POST → Bun Server → SQLite → WebSocket → Matrix TUI (Rust)
 ```
 
 ![Agent Data Flow Animation](images/AgentDataFlowV2.gif)
@@ -23,8 +22,8 @@ Before getting started, ensure you have the following installed:
 
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's official CLI for Claude
 - **[Astral uv](https://docs.astral.sh/uv/)** - Fast Python package manager (required for hook scripts)
-- **[Bun](https://bun.sh/)**, **npm**, or **yarn** - For running the server and client
-- **[Rust](https://rustup.rs/)** (optional) - For building the Matrix TUI terminal dashboard
+- **[Bun](https://bun.sh/)** - For running the event server
+- **[Rust](https://rustup.rs/)** - For building the Matrix TUI terminal dashboard
 - **[just](https://github.com/casey/just)** (optional) - Command runner for project recipes
 - **Anthropic API Key** - Set as `ANTHROPIC_API_KEY` environment variable
 - **OpenAI API Key** (optional) - For multi-model support with just-prompt MCP tool
@@ -108,23 +107,21 @@ Now your project will send events to the observability system whenever Claude Co
 You can quickly view how this works by running this repository's `.claude` setup.
 
 ```bash
-# 1. Install dependencies
-just install        # server + client (bun install)
+# 1. Install dependencies (server + TUI build)
+just install
 
-# 2. Start both server and client
+# 2. Start the event server
 just start          # or: ./scripts/start-system.sh
 
-# 3. Open http://localhost:5173 in your browser
+# 3. Launch the Matrix TUI
+just tui
 
 # 4. Open Claude Code and run the following command:
 Run git ls-files to understand the codebase.
 
-# 5. Watch events stream in the client
+# 5. Watch events stream in the TUI
 
-# 6. (Optional) Launch the Matrix TUI for terminal-based monitoring
-just tui            # or: cargo run --release --manifest-path apps/tui-rs/Cargo.toml
-
-# 7. Copy the .claude folder to other projects you want to emit events from.
+# 6. Copy the .claude folder to other projects you want to emit events from.
 cp -R .claude <directory of your codebase you want to emit events from>
 ```
 
@@ -134,18 +131,17 @@ A `justfile` provides convenient recipes for common operations:
 
 ```bash
 just              # List all available recipes
-just start        # Start server + client
+just start        # Start event server
 just stop         # Stop all processes
 just restart      # Stop then start
 just server       # Start server only (dev mode)
-just client       # Start client only
-just tui          # Launch Matrix TUI (Rust)
+just tui          # Launch Matrix TUI
+just tui-build    # Build TUI (release)
 just install      # Install all dependencies
-just health       # Check server/client status
+just health       # Check server health
 just test-event   # Send a test event
 just db-reset     # Reset the database
 just hooks        # List all hook scripts
-just open         # Open dashboard in browser
 ```
 
 ## 📁 Project Structure
@@ -162,39 +158,18 @@ claude-code-hooks-multi-agent-observability/
 │   │   ├── package.json
 │   │   └── events.db       # SQLite database (gitignored)
 │   │
-│   ├── tui-rs/             # Rust Matrix TUI (terminal dashboard)
-│   │   ├── src/
-│   │   │   ├── main.rs     # Entry point, terminal setup, main loop
-│   │   │   ├── app.rs      # App state, event ingestion, haiku naming
-│   │   │   ├── config.rs   # Theme loader (omarchy + fallback), palettes
-│   │   │   ├── event.rs    # HookEvent struct
-│   │   │   ├── ai/         # Haiku API worker (agent naming & status)
-│   │   │   ├── net/        # WebSocket client, health check, server mgmt
-│   │   │   ├── rain/       # Digital rain animation (columns, panels)
-│   │   │   ├── widgets/    # Ratatui widgets (event stream, stats, rain)
-│   │   │   └── highlight/  # Syntax highlighting (bash, JSON, paths)
-│   │   └── Cargo.toml
-│   │
-│   └── client/             # Vue 3 TypeScript client
+│   └── tui-rs/             # Rust Matrix TUI (terminal dashboard)
 │       ├── src/
-│       │   ├── App.vue     # Main app with theme & WebSocket management
-│       │   ├── components/
-│       │   │   ├── EventTimeline.vue      # Event list with auto-scroll
-│       │   │   ├── EventRow.vue           # Individual event display
-│       │   │   ├── FilterPanel.vue        # Multi-select filters
-│       │   │   ├── ChatTranscriptModal.vue # Chat history viewer
-│       │   │   ├── StickScrollButton.vue  # Scroll control
-│       │   │   └── LivePulseChart.vue     # Real-time activity chart
-│       │   ├── composables/
-│       │   │   ├── useWebSocket.ts        # WebSocket connection logic
-│       │   │   ├── useEventColors.ts      # Color assignment system
-│       │   │   ├── useChartData.ts        # Chart data aggregation
-│       │   │   └── useEventEmojis.ts      # Event type emoji mapping
-│       │   ├── utils/
-│       │   │   └── chartRenderer.ts       # Canvas chart rendering
-│       │   └── types.ts    # TypeScript interfaces
-│       ├── .env.sample     # Environment configuration template
-│       └── package.json
+│       │   ├── main.rs     # Entry point, terminal setup, main loop
+│       │   ├── app.rs      # App state, event ingestion, haiku naming
+│       │   ├── config.rs   # Theme loader (omarchy + fallback), palettes
+│       │   ├── event.rs    # HookEvent struct
+│       │   ├── ai/         # Haiku API worker (agent naming & status)
+│       │   ├── net/        # WebSocket client, health check, server mgmt
+│       │   ├── rain/       # Digital rain animation (columns, panels)
+│       │   ├── widgets/    # Ratatui widgets (event stream, stats, rain)
+│       │   └── highlight/  # Syntax highlighting (bash, JSON, paths)
+│       └── Cargo.toml
 │
 ├── .claude/                # Claude Code integration
 │   ├── hooks/             # Hook scripts (Python with uv)
@@ -230,9 +205,8 @@ claude-code-hooks-multi-agent-observability/
 ├── justfile               # Task runner recipes (just start, just stop, etc.)
 │
 ├── scripts/               # Utility scripts
-│   ├── start-system.sh   # Launch server & client
-│   ├── reset-system.sh   # Stop all processes
-│   └── test-system.sh    # System validation
+│   ├── start-system.sh   # Launch event server
+│   └── reset-system.sh   # Stop all processes
 │
 └── logs/                 # Application logs (gitignored)
 ```
@@ -281,39 +255,7 @@ Bun-powered TypeScript server with real-time capabilities:
   - WebSocket broadcast to all clients
   - Chat transcript storage
 
-### 3. Client (`apps/client/`)
-
-Vue 3 application with real-time visualization:
-
-- **Visual Design**:
-  - Dual-color system: App colors (left border) + Session colors (second border)
-  - Gradient indicators for visual distinction
-  - Dark/light theme support
-  - Responsive layout with smooth animations
-
-- **Features**:
-  - Real-time WebSocket updates
-  - Multi-criteria filtering (app, session, event type)
-  - Live pulse chart with session-colored bars and event type indicators
-  - Time range selection (1m, 3m, 5m) with appropriate data aggregation
-  - Chat transcript viewer with syntax highlighting
-  - Auto-scroll with manual override
-  - Event limiting (configurable via `VITE_MAX_EVENTS_TO_DISPLAY`)
-
-- **Tool Emoji System**:
-  - Each tool type has a dedicated emoji (Bash: 💻, Read: 📖, Write: ✍️, Edit: ✏️, Task: 🤖, etc.)
-  - Tool events show combo emojis: event emoji + tool emoji (e.g., 🔧💻 for PreToolUse:Bash)
-  - MCP tools display with 🔌 prefix
-  - Tool name badge displayed alongside event type in the timeline
-
-- **Live Pulse Chart**:
-  - Canvas-based real-time visualization
-  - Session-specific colors for each bar
-  - Event type + tool combo emojis displayed on bars
-  - Smooth animations and glow effects
-  - Responsive to filter changes
-
-### 4. Matrix TUI (`apps/tui-rs/`)
+### 3. Matrix TUI (`apps/tui-rs/`)
 
 Rust terminal dashboard with digital rain visualization, built on Ratatui and Crossterm.
 
@@ -321,7 +263,7 @@ Rust terminal dashboard with digital rain visualization, built on Ratatui and Cr
 - **Agent Naming**: Haiku API generates short memorable names for each agent based on their current task, refreshed on every new user prompt and every 60 seconds
 - **Live Event Stream**: Scrollable event log with syntax-highlighted tool output (bash commands, JSON, file paths)
 - **Stats Bar**: Real-time event rate, agent count, connection status
-- **WebSocket Client**: Connects to the same server as the Vue client on port 4000
+- **WebSocket Client**: Connects to the event server on port 4000
 
 ```bash
 # Build and run
@@ -356,7 +298,7 @@ The Matrix TUI and status line integrate with [omarchy](https://github.com/Arcad
    - Validates event structure
    - Stores in SQLite with timestamp
    - Broadcasts to WebSocket clients
-6. **Client Update**: Vue app receives event and updates timeline in real-time
+6. **TUI Update**: Matrix TUI receives event via WebSocket and updates rain display in real-time
 
 ## 🎨 Event Types & Visualization
 
@@ -424,13 +366,10 @@ Already integrated! Hooks run both validation and observability:
 ## 🧪 Testing
 
 ```bash
-# System validation
-./scripts/test-system.sh
-
 # Quick test event via just
 just test-event
 
-# Check server/client health
+# Check server health
 just health
 
 # Manual event test
@@ -460,13 +399,9 @@ Copy `.env.sample` to `.env` in the project root and fill in your API keys:
 - `ELEVENLABS_API_KEY` – ElevenLabs API key (optional, for TTS)
 - `FIRECRAWL_API_KEY` – Firecrawl API key (optional, for web scraping)
 
-**Client** (`.env` file in `apps/client/.env`):
-- `VITE_MAX_EVENTS_TO_DISPLAY=100` – Maximum events to show (removes oldest when exceeded)
+### Server Port
 
-### Server Ports
-
-- Server: `4000` (HTTP/WebSocket)
-- Client: `5173` (Vite dev server)
+- Server: `4000` (HTTP/WebSocket) — the TUI connects here automatically
 
 ## 🤖 Agent Teams
 
@@ -532,7 +467,6 @@ This is what separates engineers from vibe coders: understanding what's happenin
 ## 📊 Technical Stack
 
 - **Server**: Bun, TypeScript, SQLite
-- **Client**: Vue 3, TypeScript, Vite, Tailwind CSS
 - **TUI**: Rust, Ratatui, Crossterm, Tokio, Tungstenite
 - **Hooks**: Python 3.11+, Astral uv, TTS (ElevenLabs or OpenAI), LLMs (Claude or OpenAI)
 - **Communication**: HTTP REST, WebSocket
