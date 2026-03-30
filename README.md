@@ -12,6 +12,7 @@ This system provides complete observability into Claude Code agent behavior by c
 
 ```
 Claude Agents → Hook Scripts → HTTP POST → Bun Server → SQLite → WebSocket → Vue Client
+                                                                           → Matrix TUI (Rust)
 ```
 
 ![Agent Data Flow Animation](images/AgentDataFlowV2.gif)
@@ -23,6 +24,7 @@ Before getting started, ensure you have the following installed:
 - **[Claude Code](https://docs.anthropic.com/en/docs/claude-code)** - Anthropic's official CLI for Claude
 - **[Astral uv](https://docs.astral.sh/uv/)** - Fast Python package manager (required for hook scripts)
 - **[Bun](https://bun.sh/)**, **npm**, or **yarn** - For running the server and client
+- **[Rust](https://rustup.rs/)** (optional) - For building the Matrix TUI terminal dashboard
 - **[just](https://github.com/casey/just)** (optional) - Command runner for project recipes
 - **Anthropic API Key** - Set as `ANTHROPIC_API_KEY` environment variable
 - **OpenAI API Key** (optional) - For multi-model support with just-prompt MCP tool
@@ -106,17 +108,23 @@ Now your project will send events to the observability system whenever Claude Co
 You can quickly view how this works by running this repository's `.claude` setup.
 
 ```bash
-# 1. Start both server and client
+# 1. Install dependencies
+just install        # server + client (bun install)
+
+# 2. Start both server and client
 just start          # or: ./scripts/start-system.sh
 
-# 2. Open http://localhost:5173 in your browser
+# 3. Open http://localhost:5173 in your browser
 
-# 3. Open Claude Code and run the following command:
+# 4. Open Claude Code and run the following command:
 Run git ls-files to understand the codebase.
 
-# 4. Watch events stream in the client
+# 5. Watch events stream in the client
 
-# 5. Copy the .claude folder to other projects you want to emit events from.
+# 6. (Optional) Launch the Matrix TUI for terminal-based monitoring
+just tui            # or: cargo run --release --manifest-path apps/tui-rs/Cargo.toml
+
+# 7. Copy the .claude folder to other projects you want to emit events from.
 cp -R .claude <directory of your codebase you want to emit events from>
 ```
 
@@ -131,6 +139,7 @@ just stop         # Stop all processes
 just restart      # Stop then start
 just server       # Start server only (dev mode)
 just client       # Start client only
+just tui          # Launch Matrix TUI (Rust)
 just install      # Install all dependencies
 just health       # Check server/client status
 just test-event   # Send a test event
@@ -152,6 +161,19 @@ claude-code-hooks-multi-agent-observability/
 │   │   │   └── types.ts    # TypeScript interfaces
 │   │   ├── package.json
 │   │   └── events.db       # SQLite database (gitignored)
+│   │
+│   ├── tui-rs/             # Rust Matrix TUI (terminal dashboard)
+│   │   ├── src/
+│   │   │   ├── main.rs     # Entry point, terminal setup, main loop
+│   │   │   ├── app.rs      # App state, event ingestion, haiku naming
+│   │   │   ├── config.rs   # Theme loader (omarchy + fallback), palettes
+│   │   │   ├── event.rs    # HookEvent struct
+│   │   │   ├── ai/         # Haiku API worker (agent naming & status)
+│   │   │   ├── net/        # WebSocket client, health check, server mgmt
+│   │   │   ├── rain/       # Digital rain animation (columns, panels)
+│   │   │   ├── widgets/    # Ratatui widgets (event stream, stats, rain)
+│   │   │   └── highlight/  # Syntax highlighting (bash, JSON, paths)
+│   │   └── Cargo.toml
 │   │
 │   └── client/             # Vue 3 TypeScript client
 │       ├── src/
@@ -290,6 +312,39 @@ Vue 3 application with real-time visualization:
   - Event type + tool combo emojis displayed on bars
   - Smooth animations and glow effects
   - Responsive to filter changes
+
+### 4. Matrix TUI (`apps/tui-rs/`)
+
+Rust terminal dashboard with digital rain visualization, built on Ratatui and Crossterm.
+
+- **Digital Rain**: Per-agent rain columns with tool-aware color palettes (Bash=cyan, Read/Write=yellow, Grep=magenta, Task=orange)
+- **Agent Naming**: Haiku API generates short memorable names for each agent based on their current task, refreshed on every new user prompt and every 60 seconds
+- **Live Event Stream**: Scrollable event log with syntax-highlighted tool output (bash commands, JSON, file paths)
+- **Stats Bar**: Real-time event rate, agent count, connection status
+- **WebSocket Client**: Connects to the same server as the Vue client on port 4000
+
+```bash
+# Build and run
+just tui
+
+# Or directly with cargo
+cargo run --release --manifest-path apps/tui-rs/Cargo.toml
+```
+
+Requires `ANTHROPIC_API_KEY` in `.env` for agent naming (runs without it, names are just omitted).
+
+### Omarchy Compatibility
+
+The Matrix TUI and status line integrate with [omarchy](https://github.com/ArcadeLabsInc/omarchy) for automatic theme matching. When omarchy is installed, colors are loaded from `~/.config/omarchy/current/theme/colors.toml` so the TUI matches your terminal and desktop theme.
+
+**Without omarchy**: A built-in Kanagawa palette is used as the fallback. The full 16-color ANSI palette plus accent, cursor, and selection colors are provided, so the TUI looks good out of the box on any terminal. No configuration needed.
+
+**How it works**: The theme loader starts from the fallback palette and overlays any colors found in the omarchy TOML. This means partial omarchy configs (e.g. only `background` and `accent` defined) work correctly — missing keys fall through to the Kanagawa defaults.
+
+| Component | Fallback Theme | Config Path |
+|-----------|---------------|-------------|
+| Matrix TUI (Rust) | Kanagawa | `~/.config/omarchy/current/theme/colors.toml` |
+| Status Line (Python) | Gruvbox | `~/.config/omarchy/current/theme/colors.toml` |
 
 ## 🔄 Data Flow
 
@@ -478,6 +533,7 @@ This is what separates engineers from vibe coders: understanding what's happenin
 
 - **Server**: Bun, TypeScript, SQLite
 - **Client**: Vue 3, TypeScript, Vite, Tailwind CSS
+- **TUI**: Rust, Ratatui, Crossterm, Tokio, Tungstenite
 - **Hooks**: Python 3.11+, Astral uv, TTS (ElevenLabs or OpenAI), LLMs (Claude or OpenAI)
 - **Communication**: HTTP REST, WebSocket
 

@@ -107,6 +107,12 @@ hook-test name:
 hooks:
     @ls -1 {{project_root}}/.claude/hooks/*.py | xargs -I{} basename {} .py
 
+# ─── TUI ─────────────────────────────────────────────────
+
+# Launch Matrix TUI
+tui:
+    cargo run --release --manifest-path {{project_root}}/apps/tui-rs/Cargo.toml
+
 # ─── Open ────────────────────────────────────────────────
 
 # Open the client dashboard in browser
