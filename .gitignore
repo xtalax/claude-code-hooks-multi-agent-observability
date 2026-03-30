@@ -243,7 +243,7 @@ results/
 .svn/
 CVS/
 claude-output.json
-.claude/commands/feature.md
+.claude/
 
 # Specs - ignore everything except specific plan files
 specs/*
@@ -264,8 +264,8 @@ ai_docs/haiku45/*
 !ai_docs/sonnet45/answers.md
 !ai_docs/haiku45/answers.md
 
-# Claude Code session data
-.claude/data/
+# Nested .claude dirs (subproject agents)
+**/.claude/
 
 
 trees/
