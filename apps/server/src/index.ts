@@ -1,4 +1,4 @@
-import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, updateEventHITLResponse } from './db';
+import { initDatabase, insertEvent, getFilterOptions, getRecentEvents, getRecentEventsLite, updateEventHITLResponse } from './db';
 import type { HookEvent, HumanInTheLoopResponse } from './types';
 import { 
   createTheme, 
@@ -450,8 +450,8 @@ const server = Bun.serve({
       console.log('WebSocket client connected');
       wsClients.add(ws);
       
-      // Send recent events on connection
-      const events = getRecentEvents(300);
+      // Send recent events on connection (lite: no chat transcripts)
+      const events = getRecentEventsLite(300);
       ws.send(JSON.stringify({ type: 'initial', data: events }));
     },
     

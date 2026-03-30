@@ -147,7 +147,7 @@ just hooks        # List all hook scripts
 ## 📁 Project Structure
 
 ```
-claude-code-hooks-multi-agent-observability/
+matrix-observability/
 │
 ├── apps/                    # Application components
 │   ├── server/             # Bun TypeScript server
