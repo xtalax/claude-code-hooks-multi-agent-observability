@@ -32,7 +32,7 @@ def main():
     """
 
     # Load environment variables
-    load_dotenv()
+    load_dotenv(override=True)
 
     # Get API key from environment
     api_key = os.getenv('ELEVENLABS_API_KEY')
